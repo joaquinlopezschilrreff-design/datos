@@ -1,71 +1,93 @@
-# Import
-from flask import Flask, render_template,request, redirect
-# Importing the database library
+from flask import Flask, render_template, request, redirect, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 
-
 app = Flask(__name__)
-# Connecting SQLite
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///diary.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-# Creating a DB
-db = SQLAlchemy(app )
+app.secret_key = "secret123"
 
-#Assignment #1. Create a DB table
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///diary.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+db = SQLAlchemy(app)
 
+# ===== MODELOS =====
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(100), nullable=False)
+    password = db.Column(db.String(100), nullable=False)
 
+class Card(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    subtitle = db.Column(db.String(300), nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    user_email = db.Column(db.String(100), nullable=False)
 
+with app.app_context():
+    db.create_all()
 
+# ===== RUTAS =====
+@app.route("/")
+def welcome():
+    return render_template("welcome.html")
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = ""
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+        user = User.query.filter_by(email=email, password=password).first()
+        if user:
+            session["user_email"] = user.email
+            return redirect("/index")
+        else:
+            error = "Credenciales incorrectas"
+    return render_template("login.html", error=error)
 
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        user = User(
+            username=request.form["username"],
+            email=request.form["email"],
+            password=request.form["password"]
+        )
+        db.session.add(user)
+        db.session.commit()
+        return redirect("/login")
+    return render_template("registration.html")
 
-
-
-
-# Running the page with content
-@app.route('/')
+@app.route("/index")
 def index():
-    # Displaying the DB objects
-    # Assignment #2. Display the objects from the DB in index.html
-    
+    if "user_email" not in session:
+        return redirect("/login")
+    cards = Card.query.filter_by(user_email=session["user_email"]).all()
+    return render_template("index.html", cards=cards)
 
-    return render_template('index.html',
-                           #cards = cards
-
-                           )
-
-# Running the page with the card
-@app.route('/card/<int:id>')
-def card(id):
-    # Assignment #2. Display the right card by its id
-    
-
-    return render_template('card.html', card=card)
-
-# Running the page and creating the card
-@app.route('/create')
+@app.route("/create", methods=["GET", "POST"])
 def create():
-    return render_template('create_card.html')
+    if request.method == "POST":
+        card = Card(
+            title=request.form["title"],
+            subtitle=request.form["subtitle"],
+            text=request.form["text"],
+            user_email=session["user_email"]
+        )
+        db.session.add(card)
+        db.session.commit()
+        return redirect("/index")
+    return render_template("create_card.html")
 
-# The card form
-@app.route('/form_create', methods=['GET','POST'])
-def form_create():
-    if request.method == 'POST':
-        title =  request.form['title']
-        subtitle =  request.form['subtitle']
-        text =  request.form['text']
+@app.route("/card/<int:id>")
+def card(id):
+    card = Card.query.get(id)
+    return render_template("card.html", card=card)
 
-        # Assignment #2. Create a way to store data in the DB
-        
-
-
-
-
-        return redirect('/')
-    else:
-        return render_template('create_card.html')
-
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/")
 
 if __name__ == "__main__":
     app.run(debug=True)
